@@ -1,0 +1,75 @@
+- hosts: centos
+  become: yes
+
+  tasks:
+  - name: install repo
+    yum:
+        name: https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+        state: present
+
+  - name: install epel-release an utils
+    yum:
+        name:
+          - epel-release
+          - yum-utils
+
+  - name: yum config-manager
+    command: yum-config-manager --enable pgdg12
+
+  - name: install postgresql12
+    yum:
+        name:
+          - postgresql12-server
+          - postgresql12
+    notify: enable postgresql
+
+  - name: initialize the postgresql database
+    shell: |
+        /usr/pgsql-12/bin/postgresql-12-setup initdb
+
+  - name: ensure postgresql is listening 
+    lineinfile:
+        dest: /var/lib/pgsql/12/data/postgresql.conf
+        regexp: '^listen_addresses\s*='
+        line: "listen_addresses='*'"
+        state: present
+
+  - name: add new configuration to "pg_hba.conf"
+    blockinfile:
+        dest: /var/lib/pgsql/12/data/pg_hba.conf
+        block: |
+         host    all             all             0.0.0.0/0                md5
+         host    all             all             ::/0                     md5
+
+  - name: change peer identification to trust
+    shell: /bin/sed -i '/^local/s/peer/trust/' /var/lib/pgsql/12/data/pg_hba.conf
+    args:
+      warn: no
+    notify: restart postgresql
+  
+  - name: start postgresql server
+    systemd:
+      name: postgresql-12
+      state: started
+    notify: enable postgresql
+
+    #  - name: create a database user
+#  become: yes
+# become_user: postgres
+#    postgresql_user:
+# name: 'admin'
+      # password: 'iP1ZNoNozfbe'
+      #     role_attr_flags: CREATEDB,SUPERUSER,CREATEROLE
+      # encrypted: yes
+      # state: present
+
+  handlers:   
+  - name: restart postgresql
+    systemd:
+            name: postgresql-12
+            state: restarted
+
+  - name: enable postgresql
+    systemd:
+            name: postgresql-12
+            enabled: yes
